@@ -1,14 +1,16 @@
 package com.github.dalwid.literalura.main;
 
-import com.github.dalwid.literalura.dto.ResponseDTO;
+import com.github.dalwid.literalura.dto.LivroData;
 import com.github.dalwid.literalura.library.ConvertData;
 import com.github.dalwid.literalura.library.UsingAPI;
-import com.github.dalwid.literalura.models.Author;
-import com.github.dalwid.literalura.models.Book;
-import com.github.dalwid.literalura.service.AuthorService;
-import com.github.dalwid.literalura.supply.Supply;
+import com.github.dalwid.literalura.models.Autor;
+import com.github.dalwid.literalura.models.Livro;
+import com.github.dalwid.literalura.repository.LivroRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.Year;
+import java.util.InputMismatchException;
+import java.util.List;
 import java.util.Scanner;
 
 public class RunMain {
@@ -21,111 +23,144 @@ public class RunMain {
     private final String ADDRESS  = "https://gutendex.com/books?search=";
 
     @Autowired
-    private AuthorService service;
+    private LivroRepository service;
 
-    public RunMain (AuthorService service) {
+    public RunMain (LivroRepository service) {
         this.service = service;
     };
 
-    public void exibeMenu () {
-        var opcao = -1;
-        while (opcao != 0) {
-            var menu = """
-                1 - Buscar livro pelo título
+    public void exibeMenu(){
+        int opcao = -1;
+        while (opcao != 0){
+            String menu = """
+                \n-------------------------------------------
+                       *** Escolha uma das opções ***
+                -------------------------------------------
+                1 - Buscar livro por título
                 2 - Listar livros registrados
-                3 - Listar autores registrados
-                4 - Listar autores vivos em determinado ano
-                5 - Listar livros em um determinado idioma
-                6 - Listar top 5 livros mais baixados
-                7 - Listar livros do autor buscado
-                
-                0 - Sair                                 
+                3 - Listar Autores
+                4 - Listar Autores vivos em determinado ano
+                5 - Listar Livros em determinado Idioma
+                6 - Exibir a quantidade de livros em um determinado idioma.
+                0 - Sair
+                -------------------------------------------
                 """;
+            try {
+                System.out.println(menu);
+                opcao = leitura.nextInt();
+                leitura.nextLine();
 
-            System.out.println(menu);
-            opcao = leitura.nextInt();
-            leitura.nextLine();
-
-            switch (opcao) {
-                case 1:
-                    salvar();
-                    break;
-                case 2:
-                    listaLivrosResgistrados();
-                    break;
-                case 3:
-                    listaAutoresResgistrados();
-                    break;
-
-                case 4:
-                    ListaAutoresVivosEmDeterminadoAno();
-                    break;
-                case 5:
-                    ListaLivrosEmDeterminadoIdioma();
-                    break;
-                case 6:
-                    listaTop5LivroMaisBaixados();
-                    break;
-
-                case 7:
-                    listaLivrosPorAutor();
-                    break;
-
-                case 0:
-                    System.out.println("Saindo...");
-                    break;
-                default:
-                    System.out.println("Opção inválida");
+                switch (opcao){
+                    case 1:
+                        buscarLivro();
+                        break;
+                    case 2:
+                        listarLivros();
+                        break;
+                    case 3:
+                        listarAutores();
+                        break;
+                    case 4:
+                        listarAutoresVivosNoAno();
+                        break;
+                    case 5:
+                        listarLivrosPorIdioma();
+                        break;
+                    case 6:
+                        quantidadeLivrosPorIdioma();
+                        break;
+                    case 0:
+                        System.out.println("Saindo...");
+                        break;
+                    default:
+                        System.out.println("Opção inválida");
+                }
+            }catch (InputMismatchException e){
+                System.out.println("Entrada inválida. Por favor, insira um número inteiro.");
+                leitura.nextLine();
             }
         }
-
     }
 
-    private void listaLivrosPorAutor() {
-        service.listaLivrosPorAutor();
+    private void buscarLivro() {
+        System.out.println("Digite o nome do Livro: ");
+        var nomeLivro = leitura.nextLine();
+        System.out.println("Buscando...");
+        String enderecoBusca = ADDRESS.concat(nomeLivro.replace(" ", "+").toLowerCase().trim());
+
+        String json = usingAPI.getData(enderecoBusca);
+        String jsonLivro = convert.extractObjectJson(json, "results");
+
+        List<LivroData> livrosDTO = convert.getList(jsonLivro, LivroData.class);
+
+        if (livrosDTO.size() > 0) {
+            Livro livro = new Livro(livrosDTO.get(0));
+
+            //Verifica se o Autor já está cadastrado
+            Autor autor = service.buscarAutorPeloNome(livro.getAutor().getAutor());
+            if (autor != null) {
+                livro.setAutor(null);
+                service.save(livro);
+                livro.setAutor(autor);
+            }
+            livro = service.save(livro);
+            System.out.println(livro);
+        } else {
+            System.out.println("Livro não encontrado");
+        }
     }
 
-    private void listaTop5LivroMaisBaixados() {
-        service.buscarTop5LivroMaisBaixados();
+    private void listarLivros() {
+        List<Livro> livros = service.findAll();
+        livros.forEach(System.out::println);
     }
 
-    private void ListaLivrosEmDeterminadoIdioma() {
-        service.ListaLivrosEmDeterminadoIdioma();
+    private void listarAutores() {
+        List<Autor> autores = service.buscarAutores();
+        autores.forEach(System.out::println);
     }
 
-    private void ListaAutoresVivosEmDeterminadoAno() {
-        service.listarAutoresVivosEmDeterminadoAno();
+    private void listarAutoresVivosNoAno() {
+        try {
+            System.out.println("Digite o ano:");
+            int ano = leitura.nextInt();
+            leitura.nextLine();
+
+            List<Autor> autores = service.buscarAutoresVivosNoAno(Year.of(ano));
+            autores.forEach(System.out::println);
+        }catch (InputMismatchException e){
+            System.out.println("Entrada inválida. Por favor, insira um número inteiro.");
+            leitura.nextLine();
+        }
     }
 
-
-    private void listaAutoresResgistrados() {
-        service.listarAutoresCadastrados();
+    private void listarLivrosPorIdioma() {
+        System.out.println("""
+                Digite o idioma para busca
+                es - espanhol
+                en - inglês
+                fr - francês
+                pt - português
+                """);
+        String idioma = leitura.nextLine();
+        List<Livro> livros = service.findByIdioma(idioma);
+        if (!livros.isEmpty()){
+            livros.forEach(System.out::println);
+        }else{
+            System.out.println("Não exite livros nesse idioma cadastrado");
+        }
     }
 
-    private void listaLivrosResgistrados() {
-        service.listarLivrosCadastrados();
-    }
-
-    private Book getDadosLivroEAutor () {
-        var responseDTO = getDados();
-        var autor = new Author(responseDTO.results().get(0).authorDataList().get(0));
-        var book = new Book(responseDTO.results().get(0));
-        autor.setLivros(book);
-        return book;
-    }
-
-
-    private ResponseDTO getDados() {
-        System.out.println("Digite o titulo do livro que deseja buscar: ");
-        var livroBuscado = leitura.nextLine();
-        var json = usingAPI.getData(ADDRESS + livroBuscado.replace(" ", "%20"));
-        ResponseDTO responseDTO = convert.toGetData(json, ResponseDTO.class);
-        return responseDTO;
-    }
-
-
-    private void salvar () {
-        var book = getDadosLivroEAutor();
-        service.salvarLivroDeAutorJaCadastrado(book.getAutor(), book);
+    private void quantidadeLivrosPorIdioma() {
+        System.out.println("""
+                Digite o idioma para busca
+                es - espanhol
+                en - inglês
+                fr - francês
+                pt - português
+                """);
+        String idioma = leitura.nextLine();
+        Integer quantidadeIdioma = service.countByIdioma(idioma);
+        System.out.printf("O idioma %s tem %d livros cadastrado\n", idioma, quantidadeIdioma);
     }
 }
